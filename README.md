@@ -3,7 +3,7 @@
   starknet-agent-kit (alpha)
 </h1>
 
-<p align="center">
+<!-- <p align="center">
   <a href="https://www.npmjs.com/package/starknet-agent-kit">
     <img src="https://img.shields.io/npm/v/starknet-agent-kit.svg" alt="NPM Version" />
   </a>
@@ -155,4 +155,4 @@ For E2E tests:
 
 ```bash
 npm run test:e2e
-```
+``` -->
