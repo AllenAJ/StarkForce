@@ -1,11 +1,15 @@
 // src/lib/agent/method/swap.ts
 
 import { Account } from "starknet";
-import { executeSwap, fetchQuotes, QuoteRequest } from "@avnu/avnu-sdk";
+import { executeSwap, fetchQuotes, type QuoteRequest, type Quote } from "@avnu/avnu-sdk";
 import { tokenAddresses } from "src/lib/constant";
 import { StarknetAgent } from "../starknetAgent";
 import { symbolToDecimal } from "src/lib/utils/symbolToDecimal";
 
+// Define constants
+const AVNU_CONTRACT_ADDRESS = "0x04270219d365d6b017231b52e92b3fb5d7c8378b25649d51b308464ba6ef936";
+
+// Types
 export type SwapParams = {
   sellTokenSymbol: string;
   buyTokenSymbol: string;
@@ -14,11 +18,13 @@ export type SwapParams = {
 
 export const swapTokens = async (params: SwapParams, privateKey: string) => {
   try {
+    // Validate wallet address
     const walletAddress = process.env.PUBLIC_ADDRESS;
     if (!walletAddress) {
-      throw new Error("Wallet address not configured");
+      throw new Error("Wallet address not configured in environment variables");
     }
 
+    // Initialize StarknetAgent
     const agent = new StarknetAgent({
       walletPrivateKey: privateKey,
       anthropicApiKey: process.env.ANTHROPIC_API_KEY,
@@ -28,27 +34,52 @@ export const swapTokens = async (params: SwapParams, privateKey: string) => {
     const account = new Account(
       agent.contractInteractor.provider,
       walletAddress,
-      privateKey,
+      privateKey
     );
 
     // Validate tokens and get addresses
     const sellTokenAddress = tokenAddresses[params.sellTokenSymbol];
+    const buyTokenAddress = tokenAddresses[params.buyTokenSymbol];
+
     if (!sellTokenAddress) {
       throw new Error(`Sell token ${params.sellTokenSymbol} not supported`);
     }
-
-    const buyTokenAddress = tokenAddresses[params.buyTokenSymbol];
     if (!buyTokenAddress) {
       throw new Error(`Buy token ${params.buyTokenSymbol} not supported`);
     }
 
-    // Format sell amount with correct decimals
+    // Format amount with correct decimals
+    const sellDecimals = symbolToDecimal(params.sellTokenSymbol);
     const formattedAmount = BigInt(
       agent.contractInteractor.formatTokenAmount(
         params.sellAmount.toString(),
-        symbolToDecimal(params.sellTokenSymbol),
-      ),
+        sellDecimals
+      )
     );
+
+    // Check if amount is too small
+    if (formattedAmount <= BigInt(0)) {
+      throw new Error("Swap amount too small");
+    }
+
+    // First check allowance and approve if needed
+    const allowance = await checkAllowance(
+      account,
+      sellTokenAddress,
+      formattedAmount
+    );
+    if (!allowance.sufficient) {
+      console.log("Insufficient allowance, approving token...");
+      const approvalTx = await approveToken(
+        account,
+        sellTokenAddress,
+        formattedAmount
+      );
+      await agent.contractInteractor.provider.waitForTransaction(
+        approvalTx.transaction_hash,
+        { retryInterval: 1000 }
+      );
+    }
 
     // Prepare quote request
     const quoteParams: QuoteRequest = {
@@ -56,8 +87,13 @@ export const swapTokens = async (params: SwapParams, privateKey: string) => {
       buyTokenAddress,
       sellAmount: formattedAmount,
       takerAddress: account.address,
-      size: 1,
+      size: 1
     };
+
+    console.log("Fetching quotes with params:", {
+      ...quoteParams,
+      sellAmount: formattedAmount.toString()
+    });
 
     // Fetch quotes
     const quotes = await fetchQuotes(quoteParams);
@@ -65,129 +101,93 @@ export const swapTokens = async (params: SwapParams, privateKey: string) => {
       throw new Error("No quotes available for this swap");
     }
 
-    // Execute the swap
-    const swapResult = await executeSwap(account, quotes[0], {
-      slippage: 0.1,
+    const bestQuote: Quote = quotes[0];
+    console.log("Best quote:", {
+      sellAmount: bestQuote.sellAmount,
+      buyAmount: bestQuote.buyAmount,
+      // Access other available properties from the Quote type
     });
 
-    // Monitor the swap transaction
+    // Execute swap with proper configuration
+    const swapResult = await executeSwap(account, bestQuote, {
+      slippage: 0.5 // 0.5% slippage tolerance
+    });
+
+    console.log("Swap executed, hash:", swapResult.transactionHash);
+
+    // Monitor transaction
     const receipt = await agent.transactionMonitor.waitForTransaction(
       swapResult.transactionHash,
-      (status) => console.log("Swap status:", status),
+      (status) => console.log("Swap status:", status)
     );
 
-    // Get swap events
+    // Get transaction events
     const events = await agent.transactionMonitor.getTransactionEvents(
-      swapResult.transactionHash,
+      swapResult.transactionHash
     );
-
-    // Parse amount received from events if available
-    const amountReceived = null;
-    if (events && events.length > 0) {
-      // Here you would parse the relevant event to get the amount received
-      // The exact parsing logic depends on the event structure
-    }
 
     return JSON.stringify({
       status: "success",
       message: `Successfully swapped ${params.sellAmount} ${params.sellTokenSymbol} for ${params.buyTokenSymbol}`,
       transactionHash: swapResult.transactionHash,
-      sellAmount: params.sellAmount,
-      sellToken: params.sellTokenSymbol,
-      buyToken: params.buyTokenSymbol,
-      amountReceived,
       receipt,
       events,
+      details: {
+        sellAmount: params.sellAmount,
+        sellToken: params.sellTokenSymbol,
+        buyToken: params.buyTokenSymbol
+      }
     });
   } catch (error) {
     console.error("Swap error:", error);
     return JSON.stringify({
       status: "failure",
       error: error instanceof Error ? error.message : "Unknown error",
-      step: "swap execution",
+      step: "swap execution"
     });
   }
 };
 
-// Helper function to monitor swap status
-const monitorSwapStatus = async (agent: StarknetAgent, txHash: string) => {
-  try {
-    const receipt = await agent.transactionMonitor.waitForTransaction(txHash);
-    const events = await agent.transactionMonitor.getTransactionEvents(txHash);
-    return { receipt, events };
-  } catch (error) {
-    throw new Error(`Failed to monitor swap status: ${error.message}`);
-  }
-};
-
-// Helper function to validate and get token addresses
-const validateTokens = (sellSymbol: string, buySymbol: string) => {
-  const sellTokenAddress = tokenAddresses[sellSymbol];
-  const buyTokenAddress = tokenAddresses[buySymbol];
-
-  if (!sellTokenAddress || !buyTokenAddress) {
-    throw new Error("Invalid token symbols");
-  }
-
-  return { sellTokenAddress, buyTokenAddress };
-};
-
-// Helper function to check token allowance and approve if needed
-const checkAndApproveToken = async (
-  agent: StarknetAgent,
+// Helper function to check token allowance
+async function checkAllowance(
   account: Account,
   tokenAddress: string,
-  spenderAddress: string,
-  amount: string,
-) => {
-  const erc20Abi = [
-    {
-      name: "allowance",
-      type: "function",
-      inputs: [
-        { name: "owner", type: "felt" },
-        { name: "spender", type: "felt" },
-      ],
-      outputs: [{ name: "remaining", type: "Uint256" }],
-      stateMutability: "view",
-    },
-    {
-      name: "approve",
-      type: "function",
-      inputs: [
-        { name: "spender", type: "felt" },
-        { name: "amount", type: "Uint256" },
-      ],
-      outputs: [{ name: "success", type: "felt" }],
-      stateMutability: "external",
-    },
-  ];
+  amount: bigint
+): Promise<{ sufficient: boolean; current: bigint }> {
+  try {
+    const allowanceCall = {
+      contractAddress: tokenAddress,
+      entrypoint: "allowance",
+      calldata: [account.address, AVNU_CONTRACT_ADDRESS]
+    };
 
-  const contract = agent.contractInteractor.createContract(
-    erc20Abi,
-    tokenAddress,
-    account,
-  );
+    const response = await account.callContract(allowanceCall);
+    const currentAllowance = BigInt(response[0]); // Access first element directly
 
-  // Check current allowance
-  const allowance = await agent.contractInteractor.readContract(
-    contract,
-    "allowance",
-    [account.address, spenderAddress],
-  );
-
-  if (BigInt(allowance.remaining.toString()) < BigInt(amount)) {
-    // Approve if needed
-    const result = await agent.contractInteractor.writeContract(
-      contract,
-      "approve",
-      [spenderAddress, amount],
-    );
-
-    if (result.status === "success" && result.transactionHash) {
-      await agent.transactionMonitor.waitForTransaction(result.transactionHash);
-    } else {
-      throw new Error("Failed to approve token");
-    }
+    return {
+      sufficient: currentAllowance >= amount,
+      current: currentAllowance
+    };
+  } catch (error) {
+    console.error("Error checking allowance:", error);
+    throw error;
   }
-};
+}
+
+// Helper function to approve token spending
+async function approveToken(
+  account: Account,
+  tokenAddress: string,
+  amount: bigint
+) {
+  try {
+    return await account.execute({
+      contractAddress: tokenAddress,
+      entrypoint: "approve",
+      calldata: [AVNU_CONTRACT_ADDRESS, amount.toString(), "0"]
+    });
+  } catch (error) {
+    console.error("Error approving token:", error);
+    throw error;
+  }
+}

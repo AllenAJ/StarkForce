@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, FormEvent, ReactNode } from 'react';
-import { Send, Loader2, ChevronDown, X } from 'lucide-react';
+import { MessagesSquare, LogIn, Sun, Smartphone, ChevronDown, Users2, Send, X, Loader2 } from 'lucide-react';
 
 // Types
 interface ApiResponse {
@@ -114,6 +114,9 @@ const StarknetChat = () => {
   const [selectedCommand, setSelectedCommand] = useState<QuickCommand | null>(null);
   const [openCategory, setOpenCategory] = useState<string | null>('Account');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [publicAddress, setPublicAddress] = useState<string>('');
+
 
   // Command categories
   const commandCategories = {
@@ -283,184 +286,184 @@ const StarknetChat = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A] text-gray-100">
-      <div className="flex flex-col h-screen max-w-7xl mx-auto bg-gradient-to-b from-black to-[#0A0A0A]">
-        {/* Header */}
-        <div className="p-6 border-b border-gray-800/50 backdrop-blur-sm bg-black/30">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-500 via-blue-400 to-blue-500 bg-clip-text text-transparent">
-                Starknet Agent
-              </h1>
-              <p className="text-sm text-gray-400 mt-1 flex items-center">
-                <span className="w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse"></span>
-                Your AI assistant for Starknet operations
-              </p>
-            </div>
-          </div>
-        </div>
+    <div className="min-h-screen bg-black text-gray-100 flex">
+{/* Sidebar */}
+<div className="w-64 bg-[#0A0A0A] border-r border-gray-800/50 flex flex-col">
+  {/* Logo area */}
+  <div className="p-4 flex items-center justify-between border-b border-gray-800">
+    <div className="flex items-center space-x-2">
+      <span className="text-2xl">⚡</span>
+      <span className="font-semibold">StarkAgent</span>
+    </div>
+    <div className="flex items-center space-x-2">
+      <Sun className="w-5 h-5 text-gray-400 cursor-pointer hover:text-gray-200" />
+      <Smartphone className="w-5 h-5 text-gray-400 cursor-pointer hover:text-gray-200" />
+    </div>
+  </div>
 
-        {/* Command Categories */}
-        <div className="p-6 border-b border-gray-800/50">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 auto-rows-min">
-            {Object.entries(commandCategories).map(([category, commands]) => (
-              <div 
-                key={category} 
-                className="bg-gradient-to-b from-gray-900/90 to-gray-800/50 rounded-xl overflow-hidden border border-gray-700/30 
-                  hover:border-blue-500/30 transition-all duration-300 shadow-lg h-fit"
+  {/* Command Categories */}
+  <div className="flex-1 overflow-y-auto p-4 space-y-4">
+    {Object.entries(commandCategories).map(([category, commands]) => (
+      <div key={category} className="space-y-2">
+        <button
+          onClick={() => setSelectedCategory(selectedCategory === category ? null : category)}
+          className="w-full flex items-center justify-between text-gray-400 hover:text-white"
+        >
+          <span className="text-sm font-medium">{category}</span>
+          <ChevronDown className={`w-4 h-4 transform transition-transform ${
+            selectedCategory === category ? 'rotate-180' : ''
+          }`} />
+        </button>
+        
+        {selectedCategory === category && (
+          <div className="space-y-1 ml-2">
+            {commands.map((cmd, idx) => (
+              <button
+                key={idx}
+                onClick={() => handleCommand(cmd)}
+                className="w-full text-left text-sm text-gray-500 hover:text-white py-1 px-2 rounded transition-colors hover:bg-gray-800/50"
               >
-                <button
-                  onClick={() => setOpenCategory(openCategory === category ? null : category)}
-                  className={`w-full px-5 py-4 flex justify-between items-center text-gray-100 
-                    transition-all duration-300 ${openCategory === category ? 'bg-blue-500/10' : 'hover:bg-gray-800/50'}`}
-                >
-                  <span className="font-semibold tracking-wide">{category}</span>
-                  <ChevronDown
-                    className={`w-5 h-5 transition-transform duration-300 text-blue-400
-                      ${openCategory === category ? 'transform rotate-180' : ''}`}
-                  />
-                </button>
-                {openCategory === category && (
-                  <div className="border-t border-gray-700/30 bg-gray-900/50">
-                    <div className="p-3 space-y-1">
-                      {commands.map((cmd, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => handleCommand(cmd)}
-                          className={`w-full px-4 py-3 text-left text-sm text-gray-300 rounded-lg
-                            transition-all duration-200 group relative
-                            ${isLoading ? 'opacity-50 cursor-not-allowed' : 
-                              'hover:bg-blue-500/10 hover:text-white active:scale-98'}`}
-                          disabled={isLoading}
-                        >
-                          <div className="flex items-center">
-                            <span className="flex-grow">{cmd.label}</span>
-                            {hasRequiresAddress(cmd) && (
-                              <span className="text-xs px-2 py-1 rounded-full bg-gray-800/50 text-gray-400 ml-2">
-                                Requires Address
-                              </span>
-                            )}
-                          </div>
-                          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 via-blue-500/5 to-blue-500/0 
-                            opacity-0 group-hover:opacity-100 transform translate-x-full group-hover:translate-x-0 transition-all duration-500" />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+                {cmd.label}
+              </button>
             ))}
-          </div>
-        </div>
-
-        {/* Chat Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.map((message, index) => (
-            <div
-              key={index}
-              className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div
-                className={`max-w-[80%] p-4 rounded-lg backdrop-blur-sm ${
-                  message.type === 'user'
-                    ? 'bg-blue-600/90 text-white shadow-lg shadow-blue-500/20'
-                    : message.type === 'error'
-                    ? 'bg-red-500/20 text-red-200 border border-red-500/40'
-                    : 'bg-gray-800/70 text-gray-100 border border-gray-700/50'
-                } animate-slide-in`}
-              >
-                <div className="whitespace-pre-wrap">{formatMessageContent(message.content)}</div>
-                <span className="text-xs opacity-60 mt-2 block">
-                  {new Date(message.timestamp).toLocaleTimeString()}
-                </span>
-              </div>
-            </div>
-          ))}
-          {isLoading && (
-            <div className="flex justify-start">
-              <div className="bg-gray-800 p-4 rounded-lg flex items-center space-x-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Processing...</span>
-              </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input Area */}
-        <div className="p-4 border-t border-gray-800 bg-gray-900/30">
-          <form onSubmit={handleSubmit} className="flex space-x-2">
-            <input
-              type="text"
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              placeholder="Type your message..."
-              className="flex-1 p-4 rounded-lg bg-gray-800/50 text-gray-100 placeholder-gray-500 border border-gray-700/50 
-                focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all backdrop-blur-sm
-                hover:border-gray-600/50 hover:bg-gray-800/70"
-              disabled={isLoading}
-            />
-            <button
-              type="submit"
-              disabled={isLoading || !inputMessage.trim()}
-              className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <Send className="w-5 h-5" />
-            </button>
-          </form>
-        </div>
-
-        {/* Address Modal */}
-        {showAddressPrompt && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-gray-900 rounded-lg p-6 max-w-md w-full border border-gray-800">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-100">
-                  {selectedCommand?.addressPrompt}
-                </h3>
-                <button
-                  onClick={() => {
-                    setShowAddressPrompt(false);
-                    setAddressInput('');
-                    setSelectedCommand(null);
-                  }}
-                  className="text-gray-400 hover:text-gray-200 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <input
-                type="text"
-                value={addressInput}
-                onChange={(e) => setAddressInput(e.target.value)}
-                placeholder="0x..."
-                className="w-full p-3 mb-4 rounded-lg bg-gray-800 text-gray-100 placeholder-gray-500 border border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              />
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => {
-                    setShowAddressPrompt(false);
-                    setAddressInput('');
-                    setSelectedCommand(null);
-                  }}
-                  className="px-4 py-2 text-gray-400 hover:text-gray-200 hover:bg-gray-800 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleAddressSubmit}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  disabled={!addressInput.trim()}
-                >
-                  Submit
-                </button>
-              </div>
-            </div>
           </div>
         )}
       </div>
+    ))}
+  </div>
+
+  {/* Bottom section - Public Address */}
+  <div className="p-4 border-t border-gray-800">
+    <div className="bg-gray-900/50 rounded-lg p-3">
+      <div className="text-xs text-gray-500 mb-1">Connected Address:</div>
+      <div className="font-mono text-xs text-gray-300 break-all">
+        {publicAddress || 'Loading...'}
+      </div>
     </div>
-  );
+  </div>
+</div>
+
+{/* Main chat area */}
+<div className="flex-1 flex flex-col">
+  {/* Messages area */}
+  <div className="flex-1 overflow-y-auto p-4 space-y-4">
+    {messages.length === 0 ? (
+      <div className="h-full flex flex-col items-center justify-center text-center p-8">
+        <div className="text-4xl mb-4">⚡</div>
+        <h1 className="text-3xl font-bold mb-2">
+          Welcome to <span className="text-blue-500">StarkAgent</span>
+        </h1>
+        <p className="text-gray-400 mb-8 max-w-md">
+          Your AI assistant for Starknet operations. Ask me anything about accounts, 
+          transactions, or network status.
+        </p>
+      </div>
+    ) : (
+      messages.map((message, index) => (
+        <div
+          key={index}
+          className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+        >
+          <div
+            className={`max-w-[80%] p-4 rounded-lg ${
+              message.type === 'user'
+                ? 'bg-blue-600 text-white'
+                : message.type === 'error'
+                ? 'bg-red-500/20 text-red-200 border border-red-500/40'
+                : 'bg-gray-800 text-gray-100'
+            }`}
+          >
+            {formatMessageContent(message.content)}
+            <div className="text-xs opacity-60 mt-2">
+              {new Date(message.timestamp).toLocaleTimeString()}
+            </div>
+          </div>
+        </div>
+      ))
+    )}
+    {isLoading && (
+      <div className="flex justify-start">
+        <div className="bg-gray-800 p-4 rounded-lg flex items-center space-x-2">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span>Processing...</span>
+        </div>
+      </div>
+    )}
+    <div ref={messagesEndRef} />
+  </div>
+
+  {/* Input area */}
+  <div className="p-4 border-t border-gray-800 bg-[#141414]">
+    <form onSubmit={handleSubmit} className="flex space-x-2">
+      <input
+        type="text"
+        value={inputMessage}
+        onChange={(e) => setInputMessage(e.target.value)}
+        placeholder="Type your message..."
+        className="flex-1 bg-gray-900 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        disabled={isLoading}
+      />
+      <button
+        type="submit"
+        disabled={isLoading || !inputMessage.trim()}
+        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <Send className="w-5 h-5" />
+      </button>
+    </form>
+  </div>
+</div>
+
+{/* Address Modal */}
+{showAddressPrompt && (
+  <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+    <div className="bg-[#141414] rounded-lg p-6 max-w-md w-full border border-gray-800">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-lg font-semibold text-gray-100">
+          {selectedCommand?.addressPrompt}
+        </h3>
+        <button
+          onClick={() => {
+            setShowAddressPrompt(false);
+            setAddressInput('');
+            setSelectedCommand(null);
+          }}
+          className="text-gray-400 hover:text-gray-200"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+      <input
+        type="text"
+        value={addressInput}
+        onChange={(e) => setAddressInput(e.target.value)}
+        placeholder="0x..."
+        className="w-full bg-gray-900 text-white rounded-lg px-4 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
+      <div className="flex justify-end space-x-2">
+        <button
+          onClick={() => {
+            setShowAddressPrompt(false);
+            setAddressInput('');
+            setSelectedCommand(null);
+          }}
+          className="px-4 py-2 text-gray-400 hover:text-gray-200 hover:bg-gray-800 rounded-lg"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleAddressSubmit}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          disabled={!addressInput.trim()}
+        >
+          Confirm
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+</div>
+);
 };
 
 export default StarknetChat;

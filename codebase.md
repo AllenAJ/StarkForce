@@ -17,44 +17,77 @@
 # .gitignore
 
 ```
-# compiled output
-/dist
-/node_modules
-.env
+# Dependencies
+node_modules/
+**/node_modules/
+src/frontend/node_modules/
 
-# Logs
-logs
+# Build outputs
+dist/
+build/
+**/dist/
+**/build/
+src/frontend/.next/
+*.tgz
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+
+# Debug logs
+logs/
 *.log
 npm-debug.log*
-pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
+.pnpm-debug.log*
 
-# OS
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
 .DS_Store
-
-# Tests
-/coverage
-/.nyc_output
-
-# IDEs and editors
-/.idea
+*.sublime-workspace
+*.sublime-project
 .project
 .classpath
-.c9/
-*.launch
 .settings/
-*.sublime-workspace
+.vs/
 
-# IDE - VSCode
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
+# Testing
+coverage/
+.nyc_output/
+junit.xml
 
-*.tgz
+# Cache and temporary files
+.npm/
+.eslintcache
+.stylelintcache
+*.tsbuildinfo
+.cache/
+tmp/
+temp/
+
+# Yarn & npm
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+.pnp.*
+.npmrc
+
+# Next.js
+.next/
+.vercel/
+next-env.d.ts
 ```
 
 # .npmignore
@@ -262,10 +295,10 @@ declare namespace NodeJS {
 ```md
 <h1 align="center">
   <img src="https://pbs.twimg.com/profile_images/1834202903189618688/N4J8emeY_400x400.png" width="50"><br>
-  starknet-agent-kit (alpha)
+  StarkAgent 
 </h1>
 
-<p align="center">
+<!-- <p align="center">
   <a href="https://www.npmjs.com/package/starknet-agent-kit">
     <img src="https://img.shields.io/npm/v/starknet-agent-kit.svg" alt="NPM Version" />
   </a>
@@ -417,7 +450,7 @@ For E2E tests:
 
 \`\`\`bash
 npm run test:e2e
-\`\`\`
+\`\`\` -->
 
 ```
 
@@ -464,6 +497,8 @@ export class AgentsController implements OnModuleInit {
   async getAgentStatus() {
     return await this.agentService.getAgentStatus(this.agent);
   }
+
+  
 }
 
 ```
@@ -547,7 +582,22 @@ export interface IAgentService {
 # src/agents/interfaces/agent.interface.ts
 
 ```ts
-export interface IAgent {
+// src/agents/interfaces/agent.interface.ts
+
+import type { AgentExecutor } from "langchain/agents";
+import { AccountManager } from "../../lib/utils/account/AccountManager";
+import { TransactionMonitor } from "../../lib/utils/monitoring/TransactionMonitor";
+import { ContractInteractor } from "../../lib/utils/contract/ContractInteractor";
+import { StarknetAgentConfig } from "../../lib/agent/starknetAgent";
+
+export interface StarknetAgentInterface {
+  readonly walletPrivateKey: string;
+  readonly AgentExecutor: AgentExecutor;
+  readonly anthropicApiKey: string;
+  readonly accountManager: AccountManager;
+  readonly transactionMonitor: TransactionMonitor;
+  readonly contractInteractor: ContractInteractor;
+  
   execute(input: string): Promise<unknown>;
   getCredentials(): {
     walletPrivateKey: string;
@@ -555,6 +605,20 @@ export interface IAgent {
   };
 }
 
+// This is the actual class implementation interface
+export interface StarknetAgentClass extends StarknetAgentInterface {
+  new (config: StarknetAgentConfig): StarknetAgentInterface;
+  validateConfig(config: StarknetAgentConfig): void;
+}
+
+// Keep the existing IAgent interface for backward compatibility
+export interface IAgent {
+  execute(input: string): Promise<unknown>;
+  getCredentials(): {
+    walletPrivateKey: string;
+    anthropicApiKey: string;
+  };
+}
 ```
 
 # src/agents/services/agent.service.ts
@@ -1066,12 +1130,15 @@ module.exports = nextConfig
         "build": "next build",
         "start": "next start",
         "lint": "next lint"
-      },
+    },
     "dependencies": {
+        "@radix-ui/react-dialog": "^1.1.4",
+        "@radix-ui/react-dropdown-menu": "^2.1.4",
         "lucide-react": "^0.330.0",
         "next": "14.1.0",
         "react": "^18.2.0",
-        "react-dom": "^18.2.0"
+        "react-dom": "^18.2.0",
+        "recharts": "^2.15.0"
     },
     "devDependencies": {
         "@types/node": "^20.17.12",
@@ -1085,6 +1152,7 @@ module.exports = nextConfig
         "typescript": "^5.3.3"
     }
 }
+
 ```
 
 # src/frontend/postcss.config.js
@@ -1098,11 +1166,42 @@ module.exports = {
   }
 ```
 
+# src/frontend/src/components/AppLayout.tsx
+
+```tsx
+import React, { useState } from 'react';
+import { Layout, MessageCircle } from 'lucide-react';
+import StarknetChat from './StarknetChat';
+import StarknetDashboard from './StarknetChat';
+
+const AppLayout = () => {
+  const [viewMode, setViewMode] = useState('dashboard'); // or 'chat'
+
+  return (
+    <div className="min-h-screen bg-black">
+      {/* Mode Toggle */}
+
+
+      {/* View Content */}
+      <div className="transition-all duration-300">
+        {viewMode === 'dashboard' ? (
+          <StarknetDashboard />
+        ) : (
+          <StarknetChat />
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default AppLayout;
+```
+
 # src/frontend/src/components/StarknetChat.tsx
 
 ```tsx
 import React, { useState, useRef, useEffect, FormEvent, ReactNode } from 'react';
-import { Send, Loader2, ChevronDown, X } from 'lucide-react';
+import { MessagesSquare, LogIn, Sun, Smartphone, ChevronDown, Users2, Send, X, Loader2 } from 'lucide-react';
 
 // Types
 interface ApiResponse {
@@ -1217,6 +1316,9 @@ const StarknetChat = () => {
   const [selectedCommand, setSelectedCommand] = useState<QuickCommand | null>(null);
   const [openCategory, setOpenCategory] = useState<string | null>('Account');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [publicAddress, setPublicAddress] = useState<string>('');
+
 
   // Command categories
   const commandCategories = {
@@ -1386,184 +1488,184 @@ const StarknetChat = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A] text-gray-100">
-      <div className="flex flex-col h-screen max-w-7xl mx-auto bg-gradient-to-b from-black to-[#0A0A0A]">
-        {/* Header */}
-        <div className="p-6 border-b border-gray-800/50 backdrop-blur-sm bg-black/30">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-500 via-blue-400 to-blue-500 bg-clip-text text-transparent">
-                Starknet Agent
-              </h1>
-              <p className="text-sm text-gray-400 mt-1 flex items-center">
-                <span className="w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse"></span>
-                Your AI assistant for Starknet operations
-              </p>
-            </div>
-          </div>
-        </div>
+    <div className="min-h-screen bg-black text-gray-100 flex">
+{/* Sidebar */}
+<div className="w-64 bg-[#0A0A0A] border-r border-gray-800/50 flex flex-col">
+  {/* Logo area */}
+  <div className="p-4 flex items-center justify-between border-b border-gray-800">
+    <div className="flex items-center space-x-2">
+      <span className="text-2xl">⚡</span>
+      <span className="font-semibold">StarkAgent</span>
+    </div>
+    <div className="flex items-center space-x-2">
+      <Sun className="w-5 h-5 text-gray-400 cursor-pointer hover:text-gray-200" />
+      <Smartphone className="w-5 h-5 text-gray-400 cursor-pointer hover:text-gray-200" />
+    </div>
+  </div>
 
-        {/* Command Categories */}
-        <div className="p-6 border-b border-gray-800/50">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 auto-rows-min">
-            {Object.entries(commandCategories).map(([category, commands]) => (
-              <div 
-                key={category} 
-                className="bg-gradient-to-b from-gray-900/90 to-gray-800/50 rounded-xl overflow-hidden border border-gray-700/30 
-                  hover:border-blue-500/30 transition-all duration-300 shadow-lg h-fit"
+  {/* Command Categories */}
+  <div className="flex-1 overflow-y-auto p-4 space-y-4">
+    {Object.entries(commandCategories).map(([category, commands]) => (
+      <div key={category} className="space-y-2">
+        <button
+          onClick={() => setSelectedCategory(selectedCategory === category ? null : category)}
+          className="w-full flex items-center justify-between text-gray-400 hover:text-white"
+        >
+          <span className="text-sm font-medium">{category}</span>
+          <ChevronDown className={`w-4 h-4 transform transition-transform ${
+            selectedCategory === category ? 'rotate-180' : ''
+          }`} />
+        </button>
+        
+        {selectedCategory === category && (
+          <div className="space-y-1 ml-2">
+            {commands.map((cmd, idx) => (
+              <button
+                key={idx}
+                onClick={() => handleCommand(cmd)}
+                className="w-full text-left text-sm text-gray-500 hover:text-white py-1 px-2 rounded transition-colors hover:bg-gray-800/50"
               >
-                <button
-                  onClick={() => setOpenCategory(openCategory === category ? null : category)}
-                  className={`w-full px-5 py-4 flex justify-between items-center text-gray-100 
-                    transition-all duration-300 ${openCategory === category ? 'bg-blue-500/10' : 'hover:bg-gray-800/50'}`}
-                >
-                  <span className="font-semibold tracking-wide">{category}</span>
-                  <ChevronDown
-                    className={`w-5 h-5 transition-transform duration-300 text-blue-400
-                      ${openCategory === category ? 'transform rotate-180' : ''}`}
-                  />
-                </button>
-                {openCategory === category && (
-                  <div className="border-t border-gray-700/30 bg-gray-900/50">
-                    <div className="p-3 space-y-1">
-                      {commands.map((cmd, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => handleCommand(cmd)}
-                          className={`w-full px-4 py-3 text-left text-sm text-gray-300 rounded-lg
-                            transition-all duration-200 group relative
-                            ${isLoading ? 'opacity-50 cursor-not-allowed' : 
-                              'hover:bg-blue-500/10 hover:text-white active:scale-98'}`}
-                          disabled={isLoading}
-                        >
-                          <div className="flex items-center">
-                            <span className="flex-grow">{cmd.label}</span>
-                            {hasRequiresAddress(cmd) && (
-                              <span className="text-xs px-2 py-1 rounded-full bg-gray-800/50 text-gray-400 ml-2">
-                                Requires Address
-                              </span>
-                            )}
-                          </div>
-                          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 via-blue-500/5 to-blue-500/0 
-                            opacity-0 group-hover:opacity-100 transform translate-x-full group-hover:translate-x-0 transition-all duration-500" />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+                {cmd.label}
+              </button>
             ))}
-          </div>
-        </div>
-
-        {/* Chat Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.map((message, index) => (
-            <div
-              key={index}
-              className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div
-                className={`max-w-[80%] p-4 rounded-lg backdrop-blur-sm ${
-                  message.type === 'user'
-                    ? 'bg-blue-600/90 text-white shadow-lg shadow-blue-500/20'
-                    : message.type === 'error'
-                    ? 'bg-red-500/20 text-red-200 border border-red-500/40'
-                    : 'bg-gray-800/70 text-gray-100 border border-gray-700/50'
-                } animate-slide-in`}
-              >
-                <div className="whitespace-pre-wrap">{formatMessageContent(message.content)}</div>
-                <span className="text-xs opacity-60 mt-2 block">
-                  {new Date(message.timestamp).toLocaleTimeString()}
-                </span>
-              </div>
-            </div>
-          ))}
-          {isLoading && (
-            <div className="flex justify-start">
-              <div className="bg-gray-800 p-4 rounded-lg flex items-center space-x-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Processing...</span>
-              </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input Area */}
-        <div className="p-4 border-t border-gray-800 bg-gray-900/30">
-          <form onSubmit={handleSubmit} className="flex space-x-2">
-            <input
-              type="text"
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              placeholder="Type your message..."
-              className="flex-1 p-4 rounded-lg bg-gray-800/50 text-gray-100 placeholder-gray-500 border border-gray-700/50 
-                focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all backdrop-blur-sm
-                hover:border-gray-600/50 hover:bg-gray-800/70"
-              disabled={isLoading}
-            />
-            <button
-              type="submit"
-              disabled={isLoading || !inputMessage.trim()}
-              className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <Send className="w-5 h-5" />
-            </button>
-          </form>
-        </div>
-
-        {/* Address Modal */}
-        {showAddressPrompt && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-gray-900 rounded-lg p-6 max-w-md w-full border border-gray-800">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-100">
-                  {selectedCommand?.addressPrompt}
-                </h3>
-                <button
-                  onClick={() => {
-                    setShowAddressPrompt(false);
-                    setAddressInput('');
-                    setSelectedCommand(null);
-                  }}
-                  className="text-gray-400 hover:text-gray-200 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <input
-                type="text"
-                value={addressInput}
-                onChange={(e) => setAddressInput(e.target.value)}
-                placeholder="0x..."
-                className="w-full p-3 mb-4 rounded-lg bg-gray-800 text-gray-100 placeholder-gray-500 border border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              />
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => {
-                    setShowAddressPrompt(false);
-                    setAddressInput('');
-                    setSelectedCommand(null);
-                  }}
-                  className="px-4 py-2 text-gray-400 hover:text-gray-200 hover:bg-gray-800 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleAddressSubmit}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  disabled={!addressInput.trim()}
-                >
-                  Submit
-                </button>
-              </div>
-            </div>
           </div>
         )}
       </div>
+    ))}
+  </div>
+
+  {/* Bottom section - Public Address */}
+  <div className="p-4 border-t border-gray-800">
+    <div className="bg-gray-900/50 rounded-lg p-3">
+      <div className="text-xs text-gray-500 mb-1">Connected Address:</div>
+      <div className="font-mono text-xs text-gray-300 break-all">
+        {publicAddress || 'Loading...'}
+      </div>
     </div>
-  );
+  </div>
+</div>
+
+{/* Main chat area */}
+<div className="flex-1 flex flex-col">
+  {/* Messages area */}
+  <div className="flex-1 overflow-y-auto p-4 space-y-4">
+    {messages.length === 0 ? (
+      <div className="h-full flex flex-col items-center justify-center text-center p-8">
+        <div className="text-4xl mb-4">⚡</div>
+        <h1 className="text-3xl font-bold mb-2">
+          Welcome to <span className="text-blue-500">StarkAgent</span>
+        </h1>
+        <p className="text-gray-400 mb-8 max-w-md">
+          Your AI assistant for Starknet operations. Ask me anything about accounts, 
+          transactions, or network status.
+        </p>
+      </div>
+    ) : (
+      messages.map((message, index) => (
+        <div
+          key={index}
+          className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+        >
+          <div
+            className={`max-w-[80%] p-4 rounded-lg ${
+              message.type === 'user'
+                ? 'bg-blue-600 text-white'
+                : message.type === 'error'
+                ? 'bg-red-500/20 text-red-200 border border-red-500/40'
+                : 'bg-gray-800 text-gray-100'
+            }`}
+          >
+            {formatMessageContent(message.content)}
+            <div className="text-xs opacity-60 mt-2">
+              {new Date(message.timestamp).toLocaleTimeString()}
+            </div>
+          </div>
+        </div>
+      ))
+    )}
+    {isLoading && (
+      <div className="flex justify-start">
+        <div className="bg-gray-800 p-4 rounded-lg flex items-center space-x-2">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span>Processing...</span>
+        </div>
+      </div>
+    )}
+    <div ref={messagesEndRef} />
+  </div>
+
+  {/* Input area */}
+  <div className="p-4 border-t border-gray-800 bg-[#141414]">
+    <form onSubmit={handleSubmit} className="flex space-x-2">
+      <input
+        type="text"
+        value={inputMessage}
+        onChange={(e) => setInputMessage(e.target.value)}
+        placeholder="Type your message..."
+        className="flex-1 bg-gray-900 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        disabled={isLoading}
+      />
+      <button
+        type="submit"
+        disabled={isLoading || !inputMessage.trim()}
+        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <Send className="w-5 h-5" />
+      </button>
+    </form>
+  </div>
+</div>
+
+{/* Address Modal */}
+{showAddressPrompt && (
+  <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+    <div className="bg-[#141414] rounded-lg p-6 max-w-md w-full border border-gray-800">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-lg font-semibold text-gray-100">
+          {selectedCommand?.addressPrompt}
+        </h3>
+        <button
+          onClick={() => {
+            setShowAddressPrompt(false);
+            setAddressInput('');
+            setSelectedCommand(null);
+          }}
+          className="text-gray-400 hover:text-gray-200"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+      <input
+        type="text"
+        value={addressInput}
+        onChange={(e) => setAddressInput(e.target.value)}
+        placeholder="0x..."
+        className="w-full bg-gray-900 text-white rounded-lg px-4 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
+      <div className="flex justify-end space-x-2">
+        <button
+          onClick={() => {
+            setShowAddressPrompt(false);
+            setAddressInput('');
+            setSelectedCommand(null);
+          }}
+          className="px-4 py-2 text-gray-400 hover:text-gray-200 hover:bg-gray-800 rounded-lg"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleAddressSubmit}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          disabled={!addressInput.trim()}
+        >
+          Confirm
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+</div>
+);
 };
 
 export default StarknetChat;
@@ -1583,14 +1685,10 @@ export default function App({ Component, pageProps }: AppProps) {
 # src/frontend/src/pages/index.tsx
 
 ```tsx
-import StarknetChat from '@/components/StarknetChat'
+import AppLayout from '@/components/AppLayout'
 
 export default function Home() {
-  return (
-    <main className="min-h-screen bg-gray-100">
-      <StarknetChat />
-    </main>
-  )
+  return <AppLayout />
 }
 ```
 
@@ -1656,81 +1754,87 @@ module.exports = {
 # src/lib/agent/agent.ts
 
 ```ts
+// src/lib/agent/agent.ts
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { createToolCallingAgent, AgentExecutor } from "langchain/agents";
 import { ChatAnthropic } from "@langchain/anthropic";
-import { SystemMessage } from "@langchain/core/messages";
+import { SystemMessage, HumanMessage, AIMessage } from "@langchain/core/messages";
 import { createTools } from "./tools.js";
+import { StarknetAgentInterface } from "../../agents/interfaces/agent.interface";
+
+// Store chat history
+let chatHistory: (HumanMessage | AIMessage)[] = [];
 
 const systemMessage = new SystemMessage(`
-  You are a helpful Starknet AI assistant. Keep responses brief and focused.
+  You are a helpful Starknet AI assistant with autonomous analysis capabilities and memory of our conversation. You can:
+  1. Remember our previous interactions and context
+  2. Analyze wallet states and balances
+  3. Identify opportunities based on available assets
+  4. Make recommendations for optimal asset utilization
+  5. Execute suggested actions upon user approval
+  
+  When asked about possibilities or opportunities:
+  1. First analyze the wallet state using analyze_wallet_opportunities
+  2. Present findings in a clear, structured way
+  3. Explain the risks and potential benefits of each opportunity
+  4. Offer to execute any of the suggested actions upon user confirmation
   
   Response formats ⚡:
-
   Return transaction hashes in this format: https://starkscan.com/tx/{transaction_hash}
-  
-  Errors:
-  {
-     status: "failed",
-     details: "Quick explanation + next steps"
-  }
-  
-  Suggestions:
-  1. [Brief point]
-  2. [Brief point]
-  
-  Next steps:
-  - Option 1: [action]
-  - Option 2: [action]
   
   Guidelines:
   - Keep technical explanations under 2-3 lines
   - Use bullet points for clarity
   - Focus on actionable next steps
   - No lengthy apologies or explanations
-  `);
+  - Maintain context from previous interactions
+`);
 
 export const prompt = ChatPromptTemplate.fromMessages([
   systemMessage,
-  ["placeholder", "{chat_history}"],
+  ...chatHistory,
   ["user", "{input}"],
   ["placeholder", "{agent_scratchpad}"],
 ]);
 
-export const createAgent = (
-  starknetAgent: { getCredentials: () => { walletPrivateKey: string } },
-  anthropicApiKey: string,
-) => {
-  const model = () => {
-    if (!anthropicApiKey) {
-      throw new Error(
-        "Valid Anthropic api key is required https://docs.anthropic.com/en/api/admin-api/apikeys/get-api-key",
-      );
-    }
-    return new ChatAnthropic({
-      modelName: "claude-3-5-sonnet-latest",
-      anthropicApiKey: anthropicApiKey,
-    });
-  };
-  const modelselected = model();
-  if (!modelselected) {
-    throw new Error("Error initializing model");
-  }
+export const createAgent = (agent: StarknetAgentInterface, anthropicApiKey: string) => {
+  const model = new ChatAnthropic({
+    modelName: "claude-3-5-sonnet-latest",
+    anthropicApiKey: anthropicApiKey,
+  });
 
-  const tools = createTools(starknetAgent);
+  const tools = createTools(agent);
 
-  const agent = createToolCallingAgent({
-    llm: modelselected,
+  const toolAgent = createToolCallingAgent({
+    llm: model,
     tools,
     prompt,
   });
 
-  return new AgentExecutor({
-    agent,
+  const agentExecutor = new AgentExecutor({
+    agent: toolAgent,
     tools,
   });
-};
 
+  // Wrap the execute method to maintain chat history
+  const originalExecute = agentExecutor.invoke.bind(agentExecutor);
+  agentExecutor.invoke = async (input: any) => {
+    const result = await originalExecute(input);
+    
+    // Add the exchange to chat history
+    chatHistory.push(new HumanMessage(input.input));
+    chatHistory.push(new AIMessage(result.output));
+    
+    // Limit history to last 10 exchanges to prevent context overflow
+    if (chatHistory.length > 20) {
+      chatHistory = chatHistory.slice(-20);
+    }
+    
+    return result;
+  };
+
+  return agentExecutor;
+};
 ```
 
 # src/lib/agent/method/account/createAccount.ts
@@ -2814,11 +2918,15 @@ export const getTransactionTrace = async (params: TransactionHashParams) => {
 // src/lib/agent/method/swap.ts
 
 import { Account } from "starknet";
-import { executeSwap, fetchQuotes, QuoteRequest } from "@avnu/avnu-sdk";
+import { executeSwap, fetchQuotes, type QuoteRequest, type Quote } from "@avnu/avnu-sdk";
 import { tokenAddresses } from "src/lib/constant";
 import { StarknetAgent } from "../starknetAgent";
 import { symbolToDecimal } from "src/lib/utils/symbolToDecimal";
 
+// Define constants
+const AVNU_CONTRACT_ADDRESS = "0x04270219d365d6b017231b52e92b3fb5d7c8378b25649d51b308464ba6ef936";
+
+// Types
 export type SwapParams = {
   sellTokenSymbol: string;
   buyTokenSymbol: string;
@@ -2827,11 +2935,13 @@ export type SwapParams = {
 
 export const swapTokens = async (params: SwapParams, privateKey: string) => {
   try {
+    // Validate wallet address
     const walletAddress = process.env.PUBLIC_ADDRESS;
     if (!walletAddress) {
-      throw new Error("Wallet address not configured");
+      throw new Error("Wallet address not configured in environment variables");
     }
 
+    // Initialize StarknetAgent
     const agent = new StarknetAgent({
       walletPrivateKey: privateKey,
       anthropicApiKey: process.env.ANTHROPIC_API_KEY,
@@ -2841,27 +2951,52 @@ export const swapTokens = async (params: SwapParams, privateKey: string) => {
     const account = new Account(
       agent.contractInteractor.provider,
       walletAddress,
-      privateKey,
+      privateKey
     );
 
     // Validate tokens and get addresses
     const sellTokenAddress = tokenAddresses[params.sellTokenSymbol];
+    const buyTokenAddress = tokenAddresses[params.buyTokenSymbol];
+
     if (!sellTokenAddress) {
       throw new Error(`Sell token ${params.sellTokenSymbol} not supported`);
     }
-
-    const buyTokenAddress = tokenAddresses[params.buyTokenSymbol];
     if (!buyTokenAddress) {
       throw new Error(`Buy token ${params.buyTokenSymbol} not supported`);
     }
 
-    // Format sell amount with correct decimals
+    // Format amount with correct decimals
+    const sellDecimals = symbolToDecimal(params.sellTokenSymbol);
     const formattedAmount = BigInt(
       agent.contractInteractor.formatTokenAmount(
         params.sellAmount.toString(),
-        symbolToDecimal(params.sellTokenSymbol),
-      ),
+        sellDecimals
+      )
     );
+
+    // Check if amount is too small
+    if (formattedAmount <= BigInt(0)) {
+      throw new Error("Swap amount too small");
+    }
+
+    // First check allowance and approve if needed
+    const allowance = await checkAllowance(
+      account,
+      sellTokenAddress,
+      formattedAmount
+    );
+    if (!allowance.sufficient) {
+      console.log("Insufficient allowance, approving token...");
+      const approvalTx = await approveToken(
+        account,
+        sellTokenAddress,
+        formattedAmount
+      );
+      await agent.contractInteractor.provider.waitForTransaction(
+        approvalTx.transaction_hash,
+        { retryInterval: 1000 }
+      );
+    }
 
     // Prepare quote request
     const quoteParams: QuoteRequest = {
@@ -2869,8 +3004,13 @@ export const swapTokens = async (params: SwapParams, privateKey: string) => {
       buyTokenAddress,
       sellAmount: formattedAmount,
       takerAddress: account.address,
-      size: 1,
+      size: 1
     };
+
+    console.log("Fetching quotes with params:", {
+      ...quoteParams,
+      sellAmount: formattedAmount.toString()
+    });
 
     // Fetch quotes
     const quotes = await fetchQuotes(quoteParams);
@@ -2878,133 +3018,96 @@ export const swapTokens = async (params: SwapParams, privateKey: string) => {
       throw new Error("No quotes available for this swap");
     }
 
-    // Execute the swap
-    const swapResult = await executeSwap(account, quotes[0], {
-      slippage: 0.1,
+    const bestQuote: Quote = quotes[0];
+    console.log("Best quote:", {
+      sellAmount: bestQuote.sellAmount,
+      buyAmount: bestQuote.buyAmount,
+      // Access other available properties from the Quote type
     });
 
-    // Monitor the swap transaction
+    // Execute swap with proper configuration
+    const swapResult = await executeSwap(account, bestQuote, {
+      slippage: 0.5 // 0.5% slippage tolerance
+    });
+
+    console.log("Swap executed, hash:", swapResult.transactionHash);
+
+    // Monitor transaction
     const receipt = await agent.transactionMonitor.waitForTransaction(
       swapResult.transactionHash,
-      (status) => console.log("Swap status:", status),
+      (status) => console.log("Swap status:", status)
     );
 
-    // Get swap events
+    // Get transaction events
     const events = await agent.transactionMonitor.getTransactionEvents(
-      swapResult.transactionHash,
+      swapResult.transactionHash
     );
-
-    // Parse amount received from events if available
-    const amountReceived = null;
-    if (events && events.length > 0) {
-      // Here you would parse the relevant event to get the amount received
-      // The exact parsing logic depends on the event structure
-    }
 
     return JSON.stringify({
       status: "success",
       message: `Successfully swapped ${params.sellAmount} ${params.sellTokenSymbol} for ${params.buyTokenSymbol}`,
       transactionHash: swapResult.transactionHash,
-      sellAmount: params.sellAmount,
-      sellToken: params.sellTokenSymbol,
-      buyToken: params.buyTokenSymbol,
-      amountReceived,
       receipt,
       events,
+      details: {
+        sellAmount: params.sellAmount,
+        sellToken: params.sellTokenSymbol,
+        buyToken: params.buyTokenSymbol
+      }
     });
   } catch (error) {
     console.error("Swap error:", error);
     return JSON.stringify({
       status: "failure",
       error: error instanceof Error ? error.message : "Unknown error",
-      step: "swap execution",
+      step: "swap execution"
     });
   }
 };
 
-// Helper function to monitor swap status
-const monitorSwapStatus = async (agent: StarknetAgent, txHash: string) => {
-  try {
-    const receipt = await agent.transactionMonitor.waitForTransaction(txHash);
-    const events = await agent.transactionMonitor.getTransactionEvents(txHash);
-    return { receipt, events };
-  } catch (error) {
-    throw new Error(`Failed to monitor swap status: ${error.message}`);
-  }
-};
-
-// Helper function to validate and get token addresses
-const validateTokens = (sellSymbol: string, buySymbol: string) => {
-  const sellTokenAddress = tokenAddresses[sellSymbol];
-  const buyTokenAddress = tokenAddresses[buySymbol];
-
-  if (!sellTokenAddress || !buyTokenAddress) {
-    throw new Error("Invalid token symbols");
-  }
-
-  return { sellTokenAddress, buyTokenAddress };
-};
-
-// Helper function to check token allowance and approve if needed
-const checkAndApproveToken = async (
-  agent: StarknetAgent,
+// Helper function to check token allowance
+async function checkAllowance(
   account: Account,
   tokenAddress: string,
-  spenderAddress: string,
-  amount: string,
-) => {
-  const erc20Abi = [
-    {
-      name: "allowance",
-      type: "function",
-      inputs: [
-        { name: "owner", type: "felt" },
-        { name: "spender", type: "felt" },
-      ],
-      outputs: [{ name: "remaining", type: "Uint256" }],
-      stateMutability: "view",
-    },
-    {
-      name: "approve",
-      type: "function",
-      inputs: [
-        { name: "spender", type: "felt" },
-        { name: "amount", type: "Uint256" },
-      ],
-      outputs: [{ name: "success", type: "felt" }],
-      stateMutability: "external",
-    },
-  ];
+  amount: bigint
+): Promise<{ sufficient: boolean; current: bigint }> {
+  try {
+    const allowanceCall = {
+      contractAddress: tokenAddress,
+      entrypoint: "allowance",
+      calldata: [account.address, AVNU_CONTRACT_ADDRESS]
+    };
 
-  const contract = agent.contractInteractor.createContract(
-    erc20Abi,
-    tokenAddress,
-    account,
-  );
+    const response = await account.callContract(allowanceCall);
+    const currentAllowance = BigInt(response[0]); // Access first element directly
 
-  // Check current allowance
-  const allowance = await agent.contractInteractor.readContract(
-    contract,
-    "allowance",
-    [account.address, spenderAddress],
-  );
-
-  if (BigInt(allowance.remaining.toString()) < BigInt(amount)) {
-    // Approve if needed
-    const result = await agent.contractInteractor.writeContract(
-      contract,
-      "approve",
-      [spenderAddress, amount],
-    );
-
-    if (result.status === "success" && result.transactionHash) {
-      await agent.transactionMonitor.waitForTransaction(result.transactionHash);
-    } else {
-      throw new Error("Failed to approve token");
-    }
+    return {
+      sufficient: currentAllowance >= amount,
+      current: currentAllowance
+    };
+  } catch (error) {
+    console.error("Error checking allowance:", error);
+    throw error;
   }
-};
+}
 
+// Helper function to approve token spending
+async function approveToken(
+  account: Account,
+  tokenAddress: string,
+  amount: bigint
+) {
+  try {
+    return await account.execute({
+      contractAddress: tokenAddress,
+      entrypoint: "approve",
+      calldata: [AVNU_CONTRACT_ADDRESS, amount.toString(), "0"]
+    });
+  } catch (error) {
+    console.error("Error approving token:", error);
+    throw error;
+  }
+}
 ```
 
 # src/lib/agent/method/token/transfer.ts
@@ -3562,14 +3665,14 @@ export type VerifyMessageParams = z.infer<typeof verifyMessageSchema>;
 ```ts
 // src/lib/agent/starknetAgent.ts
 
-import { IAgent } from "../../agents/interfaces/agent.interface";
-import type { AgentExecutor } from "langchain/agents";
-import { createAgent } from "./agent";
 import { RpcProvider } from "starknet";
 import { RPC_URL } from "../constant";
 import { AccountManager } from "../utils/account/AccountManager";
 import { TransactionMonitor } from "../utils/monitoring/TransactionMonitor";
 import { ContractInteractor } from "../utils/contract/ContractInteractor";
+import { StarknetAgentInterface } from "../../agents/interfaces/agent.interface";
+import { AgentExecutor } from "langchain/agents";
+import { createAgent } from "./agent";
 
 export const rpcProvider = new RpcProvider({ nodeUrl: RPC_URL });
 
@@ -3578,27 +3681,27 @@ export interface StarknetAgentConfig {
   anthropicApiKey: string;
 }
 
-export class StarknetAgent implements IAgent {
-  private readonly walletPrivateKey: string;
-  private readonly AgentExecutor: AgentExecutor;
-  private readonly anthropicApiKey: string;
-
-  // New utility instances
+export class StarknetAgent implements StarknetAgentInterface {
+  public readonly walletPrivateKey: string;
+  public readonly anthropicApiKey: string;
+  public readonly AgentExecutor: AgentExecutor;
   public readonly accountManager: AccountManager;
   public readonly transactionMonitor: TransactionMonitor;
   public readonly contractInteractor: ContractInteractor;
 
   constructor(config: StarknetAgentConfig) {
     this.validateConfig(config);
-
+    
     this.walletPrivateKey = config.walletPrivateKey;
     this.anthropicApiKey = config.anthropicApiKey;
-    this.AgentExecutor = createAgent(this, this.anthropicApiKey);
-
+    
     // Initialize utility classes
     this.accountManager = new AccountManager(rpcProvider);
     this.transactionMonitor = new TransactionMonitor(rpcProvider);
     this.contractInteractor = new ContractInteractor(rpcProvider);
+    
+    // Initialize agent executor
+    this.AgentExecutor = createAgent(this as StarknetAgentInterface, this.anthropicApiKey);
   }
 
   private validateConfig(config: StarknetAgentConfig) {
@@ -3626,13 +3729,226 @@ export class StarknetAgent implements IAgent {
     return response;
   }
 }
+```
 
+# src/lib/agent/strategy/StrategyAnalyzer.ts
+
+```ts
+// src/lib/agent/strategy/StrategyAnalyzer.ts
+
+import { tokenAddresses } from "../../constant";
+import { Contract } from "starknet";
+
+// Price feed interface for token prices
+interface PriceFeed {
+  getPrice(tokenAddress: string): Promise<number>;
+}
+
+// Simple price feed implementation
+class SimplePriceFeed implements PriceFeed {
+  // Hardcoded prices for demonstration
+  private prices: { [key: string]: number } = {
+    ETH: 3000,
+    USDC: 1,
+    USDT: 1,
+    STRK: 2
+  };
+
+  async getPrice(symbol: string): Promise<number> {
+    return this.prices[symbol] || 0;
+  }
+}
+import { AccountManager } from "../../utils/account/AccountManager";
+import { ContractInteractor } from "../../utils/contract/ContractInteractor";
+import { symbolToDecimal } from "../../utils/symbolToDecimal";
+
+interface TokenBalance {
+  symbol: string;
+  balance: string;
+  usdValue?: number;
+}
+
+interface OpportunityAnalysis {
+  type: string;
+  description: string;
+  expectedReturn?: number;
+  risk: 'low' | 'medium' | 'high';
+  minRequired: number;
+  action: string;
+}
+
+export class StrategyAnalyzer {
+  private priceFeed: PriceFeed;
+
+  constructor(
+    private readonly accountManager: AccountManager,
+    private readonly contractInteractor: ContractInteractor
+  ) {
+    this.priceFeed = new SimplePriceFeed();
+  }
+
+  private async calculatePortfolioValue(balances: TokenBalance[]): Promise<number> {
+    let totalValue = 0;
+
+    for (const balance of balances) {
+      try {
+        const price = await this.priceFeed.getPrice(balance.symbol);
+        const value = Number(balance.balance) * price;
+        totalValue += value;
+        
+        // Update the balance object with USD value
+        balance.usdValue = value;
+      } catch (error) {
+        console.error(`Error calculating value for ${balance.symbol}:`, error);
+      }
+    }
+
+    return totalValue;
+  }
+
+  async analyzeWalletState(address: string): Promise<{
+    balances: TokenBalance[];
+    opportunities: OpportunityAnalysis[];
+  }> {
+    try {
+      // Get balances for all supported tokens
+      const balances = await this.getAllTokenBalances(address);
+      
+      // Calculate total portfolio value in USD
+      const portfolioValue = await this.calculatePortfolioValue(balances);
+      
+      // Analyze possible opportunities
+      const opportunities = await this.identifyOpportunities(balances, portfolioValue, address);
+
+      return {
+        balances,
+        opportunities
+      };
+    } catch (error) {
+      throw new Error(`Failed to analyze wallet state: ${error.message}`);
+    }
+  }
+
+  private async getAllTokenBalances(address: string): Promise<TokenBalance[]> {
+    const balances: TokenBalance[] = [];
+    
+    for (const [symbol, tokenAddress] of Object.entries(tokenAddresses)) {
+      try {
+        const decimals = symbolToDecimal(symbol);
+        const contract = this.contractInteractor.createContract(erc20ABI, tokenAddress);
+        const rawBalance = await contract.balanceOf(address);
+        const formattedBalance = this.contractInteractor.parseTokenAmount(rawBalance.toString(), decimals);
+        
+        balances.push({
+          symbol,
+          balance: formattedBalance
+        });
+      } catch (error) {
+        console.error(`Error fetching ${symbol} balance:`, error);
+      }
+    }
+    
+    return balances;
+  }
+
+  private async identifyOpportunities(
+    balances: TokenBalance[],
+    portfolioValue: number,
+    address: string
+  ): Promise<OpportunityAnalysis[]> {
+    const opportunities: OpportunityAnalysis[] = [];
+    
+    // Get ETH balance
+    const ethBalance = balances.find(b => b.symbol === 'ETH');
+    const ethValue = Number(ethBalance?.balance || 0);
+
+    if (ethValue > 0) {
+      // Analyze DeFi opportunities
+      if (ethValue >= 0.01) {
+        opportunities.push({
+          type: 'swap',
+          description: 'Swap ETH to stablecoins for reduced volatility',
+          risk: 'low',
+          minRequired: 0.01,
+          action: 'swap_eth_to_usdc'
+        });
+      }
+
+      if (ethValue >= 0.05) {
+        opportunities.push({
+          type: 'liquidity',
+          description: 'Provide liquidity to ETH/USDC pool',
+          expectedReturn: 5.2, // APR percentage
+          risk: 'medium',
+          minRequired: 0.05,
+          action: 'provide_liquidity'
+        });
+      }
+
+      // Account management opportunities
+      if (!await this.accountManager.isAccountDeployed(address)) {
+        opportunities.push({
+          type: 'account',
+          description: 'Deploy account to enable full functionality',
+          risk: 'low',
+          minRequired: 0.002,
+          action: 'deploy_account'
+        });
+      }
+    }
+
+    // Stablecoin opportunities
+    const usdcBalance = balances.find(b => b.symbol === 'USDC');
+    if (Number(usdcBalance?.balance || 0) > 100) {
+      opportunities.push({
+        type: 'yield',
+        description: 'Earn yield on USDC through lending protocols',
+        expectedReturn: 3.8,
+        risk: 'low',
+        minRequired: 100,
+        action: 'lend_usdc'
+      });
+    }
+
+    return opportunities;
+  }
+
+  async recommendActions(address: string): Promise<string[]> {
+    const { opportunities } = await this.analyzeWalletState(address);
+    const recommendations: string[] = [];
+
+    for (const opportunity of opportunities) {
+      recommendations.push(
+        `Recommended Action: ${opportunity.description}\n` +
+        `Risk Level: ${opportunity.risk}\n` +
+        `Minimum Required: ${opportunity.minRequired} ${opportunity.type === 'swap' ? 'ETH' : 'USDC'}\n` +
+        (opportunity.expectedReturn ? `Expected Return: ${opportunity.expectedReturn}% APR\n` : '') +
+        `Action Command: ${opportunity.action}\n`
+      );
+    }
+
+    return recommendations;
+  }
+}
+
+const erc20ABI = [
+  {
+    name: "balanceOf",
+    type: "function",
+    inputs: [{ name: "account", type: "felt" }],
+    outputs: [{ name: "balance", type: "Uint256" }],
+    stateMutability: "view"
+  }
+];
 ```
 
 # src/lib/agent/tools.ts
 
 ```ts
 import { tool } from "@langchain/core/tools";
+import { StarknetAgentInterface } from "../../agents/interfaces/agent.interface";
+import { withWalletKey, isStarknetAgentClass } from "./tools/helper";
+
 import {
   CreateOZAccount,
   CreateArgentAccount,
@@ -3690,25 +4006,27 @@ import { declareContract } from "./method/contract/declareContract";
 import { estimateAccountDeployFee } from "./method/account/estimateAccountDeployFee";
 import { signMessage } from "./method/account/signMessage";
 import { verifyMessage } from "./method/account/verifyMessage";
+import { createAutonomousTools } from './tools/autonomousTool';
 
 // Types
-type StarknetAgentInterface = {
-  getCredentials: () => { walletPrivateKey: string };
-};
+// type StarknetAgentInterface = {
+//   getCredentials: () => { walletPrivateKey: string };
+// };
 
 /**
  * Wraps a function to inject the wallet private key from the agent
  */
-const withWalletKey = <T>(
-  fn: (params: T, privateKey: string) => Promise<any>,
-  agent: StarknetAgentInterface,
-) => {
-  return (params: T) => fn(params, agent.getCredentials().walletPrivateKey);
-};
+// const withWalletKey = <T>(
+//   fn: (params: T, privateKey: string) => Promise<any>,
+//   agent: StarknetAgentInterface,
+// ) => {
+//   return (params: T) => fn(params, agent.getCredentials().walletPrivateKey);
+// };
 /**
  * Creates and returns balance checking tools with injected agent credentials
  */
 export const createTools = (agent: StarknetAgentInterface) => [
+  ...createAutonomousTools(agent as any), // TODO: Update createAutonomousTools to handle both types
   tool(withWalletKey(getOwnBalance, agent), {
     name: "get_own_balance",
     description: "Get the balance of an asset in your wallet",
@@ -3907,6 +4225,75 @@ export const createTools = (agent: StarknetAgentInterface) => [
 
 ];
 
+```
+
+# src/lib/agent/tools/autonomousTool.ts
+
+```ts
+// src/lib/agent/tools/autonomousTool.ts
+
+import { z } from "zod";
+import { tool } from "@langchain/core/tools";
+import { StrategyAnalyzer } from "../strategy/StrategyAnalyzer";
+import { StarknetAgent } from "../starknetAgent";
+import { fetchQuotes } from "@avnu/avnu-sdk";
+
+const analyzeWalletSchema = z.object({
+  address: z.string().describe("The wallet address to analyze"),
+});
+
+export const createAutonomousTools = (agent: StarknetAgent) => [
+  tool(async ({ address }: { address: string }) => {
+    try {
+      const analyzer = new StrategyAnalyzer(
+        agent.accountManager,
+        agent.contractInteractor
+      );
+
+      const recommendations = await analyzer.recommendActions(address);
+      
+      return JSON.stringify({
+        status: "success",
+        recommendations,
+      });
+    } catch (error) {
+      return JSON.stringify({
+        status: "failure",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }, {
+    name: "analyze_wallet_opportunities",
+    description: "Analyzes a wallet's state and recommends possible actions based on available assets",
+    schema: analyzeWalletSchema,
+  })
+];
+```
+
+# src/lib/agent/tools/helper.ts
+
+```ts
+// src/lib/agent/tools/helper.ts
+
+import { StarknetAgent } from "../starknetAgent";
+import { StarknetAgentInterface } from "../../../agents/interfaces/agent.interface";
+
+/**
+ * Type guard to check if an agent implements the full StarknetAgent class
+ */
+export function isStarknetAgentClass(agent: StarknetAgentInterface | StarknetAgent): agent is StarknetAgent {
+  return 'validateConfig' in agent;
+}
+
+/**
+ * Wraps a function to inject the wallet private key from the agent
+ */
+export const withWalletKey = <T>(
+  fn: (params: T, privateKey: string) => Promise<any>,
+  agent: StarknetAgentInterface | StarknetAgent,
+) => {
+  return (params: T) => fn(params, agent.getCredentials().walletPrivateKey);
+};
 ```
 
 # src/lib/constant.ts

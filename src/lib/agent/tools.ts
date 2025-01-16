@@ -1,4 +1,7 @@
 import { tool } from "@langchain/core/tools";
+import { StarknetAgentInterface } from "../../agents/interfaces/agent.interface";
+import { withWalletKey, isStarknetAgentClass } from "./tools/helper";
+
 import {
   CreateOZAccount,
   CreateArgentAccount,
@@ -56,25 +59,27 @@ import { declareContract } from "./method/contract/declareContract";
 import { estimateAccountDeployFee } from "./method/account/estimateAccountDeployFee";
 import { signMessage } from "./method/account/signMessage";
 import { verifyMessage } from "./method/account/verifyMessage";
+import { createAutonomousTools } from './tools/autonomousTool';
 
 // Types
-type StarknetAgentInterface = {
-  getCredentials: () => { walletPrivateKey: string };
-};
+// type StarknetAgentInterface = {
+//   getCredentials: () => { walletPrivateKey: string };
+// };
 
 /**
  * Wraps a function to inject the wallet private key from the agent
  */
-const withWalletKey = <T>(
-  fn: (params: T, privateKey: string) => Promise<any>,
-  agent: StarknetAgentInterface,
-) => {
-  return (params: T) => fn(params, agent.getCredentials().walletPrivateKey);
-};
+// const withWalletKey = <T>(
+//   fn: (params: T, privateKey: string) => Promise<any>,
+//   agent: StarknetAgentInterface,
+// ) => {
+//   return (params: T) => fn(params, agent.getCredentials().walletPrivateKey);
+// };
 /**
  * Creates and returns balance checking tools with injected agent credentials
  */
 export const createTools = (agent: StarknetAgentInterface) => [
+  ...createAutonomousTools(agent as any), // TODO: Update createAutonomousTools to handle both types
   tool(withWalletKey(getOwnBalance, agent), {
     name: "get_own_balance",
     description: "Get the balance of an asset in your wallet",
