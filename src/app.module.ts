@@ -4,10 +4,13 @@ import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { AgentResponseInterceptor } from "./lib/interceptors/response";
 import { ApiKeyGuard } from "./lib/guard/ApikeyGuard";
 import { ConfigModule } from "./config/config.module";
+import { PragmaController } from './agents/controllers/pragma.controller';
 
 @Module({
   imports: [ConfigModule, AgentsModule],
-  controllers: [],
+  controllers: [
+    PragmaController
+  ],
   providers: [
     {
       provide: APP_GUARD,

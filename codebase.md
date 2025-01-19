@@ -233,6 +233,7 @@ declare namespace NodeJS {
     "@nestjs/config": "^3.3.0",
     "@nestjs/core": "^10.0.0",
     "@nestjs/platform-fastify": "^10.4.15",
+    "@pragmaoracle/solidity-sdk": "^1.0.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "dotenv": "^16.4.7",
@@ -521,6 +522,48 @@ export class AgentsModule {}
 
 ```
 
+# src/agents/controllers/pragma.controller.ts
+
+```ts
+import { Controller, Get, UseInterceptors } from '@nestjs/common';
+import { ConfigurationService } from '../../config/configuration';
+import { AgentResponseInterceptor } from '../../lib/interceptors/response';
+
+@Controller('pragma')
+@UseInterceptors(AgentResponseInterceptor)
+export class PragmaController {
+  constructor(private readonly config: ConfigurationService) {}
+
+  @Get('price')
+  async getPriceFeeds() {
+    try {
+      // Mock data for now - you'll need to add the actual Pragma integration
+      const mockPrices = [
+        {
+          pair: 'BTC/USD',
+          price: '34500.00',
+          timestamp: Date.now(),
+        },
+        {
+          pair: 'ETH/USD',
+          price: '1850.00',
+          timestamp: Date.now(),
+        }
+      ];
+
+      return {
+        status: "success",
+        data: mockPrices
+      };
+
+    } catch (error) {
+      console.error('Error fetching Pragma price feeds:', error);
+      throw error;
+    }
+  }
+}
+```
+
 # src/agents/dto/agents.ts
 
 ```ts
@@ -719,10 +762,13 @@ import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { AgentResponseInterceptor } from "./lib/interceptors/response";
 import { ApiKeyGuard } from "./lib/guard/ApikeyGuard";
 import { ConfigModule } from "./config/config.module";
+import { PragmaController } from './agents/controllers/pragma.controller';
 
 @Module({
   imports: [ConfigModule, AgentsModule],
-  controllers: [],
+  controllers: [
+    PragmaController
+  ],
   providers: [
     {
       provide: APP_GUARD,
@@ -999,6 +1045,8 @@ export class ConfigModule {}
 # src/config/configuration.ts
 
 ```ts
+// src/config/configuration.ts
+
 import { envSchema, type EnvConfig } from "./env.validation";
 
 export class ConfigurationService {
@@ -1044,6 +1092,18 @@ export class ConfigurationService {
     };
   }
 
+  get pragmaConfig() {
+    return {
+      contractAddress: this.config.PRAGMA_CONTRACT_ADDRESS,
+      apiKey: this.config.PRAGMA_API_KEY,
+      network: this.config.NETWORK
+    };
+  }
+
+  get pragmaContractAddress(): string {
+    return this.config.PRAGMA_CONTRACT_ADDRESS;
+  }
+
   get isDevelopment(): boolean {
     return this.config.NODE_ENV === "development";
   }
@@ -1055,13 +1115,78 @@ export class ConfigurationService {
   get isTest(): boolean {
     return this.config.NODE_ENV === "test";
   }
-}
 
+  get debug(): boolean {
+    return this.config.DEBUG;
+  }
+
+  get serviceUrl(): string | undefined {
+    return this.config.SERVICE_URL;
+  }
+
+  get network(): string {
+    return this.config.NETWORK;
+  }
+
+  get fullConfig(): EnvConfig {
+    return this.config;
+  }
+
+  // Helper method to validate configuration
+  validate(): boolean {
+    if (!this.config.API_KEY) {
+      throw new Error("API_KEY is required");
+    }
+    if (!this.config.STARKNET_PRIVATE_KEY) {
+      throw new Error("STARKNET_PRIVATE_KEY is required");
+    }
+    if (!this.config.PUBLIC_ADDRESS) {
+      throw new Error("PUBLIC_ADDRESS is required");
+    }
+    if (!this.config.RPC_URL) {
+      throw new Error("RPC_URL is required");
+    }
+    if (!this.config.ANTHROPIC_API_KEY) {
+      throw new Error("ANTHROPIC_API_KEY is required");
+    }
+    return true;
+  }
+
+  // Helper method to get a specific config value with type safety
+  get<K extends keyof EnvConfig>(key: K): EnvConfig[K] {
+    return this.config[key];
+  }
+
+  // Helper method to check if a configuration exists
+  has(key: keyof EnvConfig): boolean {
+    return key in this.config;
+  }
+
+  // Format configuration for logging (hiding sensitive values)
+  toSafeLog(): Record<string, unknown> {
+    return {
+      PORT: this.port,
+      NODE_ENV: this.nodeEnv,
+      API_KEY: "***",
+      STARKNET_PRIVATE_KEY: "***",
+      PUBLIC_ADDRESS: this.config.PUBLIC_ADDRESS,
+      RPC_URL: this.config.RPC_URL,
+      ANTHROPIC_API_KEY: "***",
+      PRAGMA_CONTRACT_ADDRESS: this.config.PRAGMA_CONTRACT_ADDRESS,
+      PRAGMA_API_KEY: "***",
+      NETWORK: this.config.NETWORK,
+      DEBUG: this.config.DEBUG,
+      SERVICE_URL: this.config.SERVICE_URL,
+    };
+  }
+}
 ```
 
 # src/config/env.validation.ts
 
 ```ts
+// src/config/env.validation.ts
+
 import { z } from "zod";
 
 export const envSchema = z.object({
@@ -1082,10 +1207,33 @@ export const envSchema = z.object({
 
   // Service configuration
   ANTHROPIC_API_KEY: z.string().min(1, "Anthropic API key is required"),
+
+  // Pragma configuration
+  PRAGMA_CONTRACT_ADDRESS: z
+    .string()
+    .default("0x2a85bd616f912537c50a49a4076db02c00b29b2cdc8a197ce92ed1837fa875b"),
+  PRAGMA_API_KEY: z
+    .string()
+    .optional()
+    .default(""),
+  
+  // Optional configurations with defaults
+  NETWORK: z
+    .enum(["mainnet", "testnet", "devnet"])
+    .default("testnet"),
+  DEBUG: z
+    .string()
+    .transform((val) => val === "true")
+    .default("false"),
+
+  // Optional service URLs
+  SERVICE_URL: z
+    .string()
+    .url("Invalid service URL")
+    .optional(),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
-
 ```
 
 # src/frontend/next-env.d.ts
@@ -1138,7 +1286,8 @@ module.exports = nextConfig
         "next": "14.1.0",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
-        "recharts": "^2.15.0"
+        "recharts": "^2.15.0",
+        "starknet": "^6.11.0"
     },
     "devDependencies": {
         "@types/node": "^20.17.12",
@@ -1165,6 +1314,30 @@ module.exports = {
     },
   }
 ```
+
+# src/frontend/public/assets/char1.png
+
+This is a binary file of the type: Image
+
+# src/frontend/public/assets/char2.png
+
+This is a binary file of the type: Image
+
+# src/frontend/public/assets/char3.png
+
+This is a binary file of the type: Image
+
+# src/frontend/public/assets/char4.png
+
+This is a binary file of the type: Image
+
+# src/frontend/public/assets/char5.png
+
+This is a binary file of the type: Image
+
+# src/frontend/public/assets/char6.png
+
+This is a binary file of the type: Image
 
 # src/frontend/src/components/AppLayout.tsx
 
@@ -1200,22 +1373,19 @@ export default AppLayout;
 # src/frontend/src/components/StarknetChat.tsx
 
 ```tsx
-import React, { useState, useRef, useEffect, FormEvent, ReactNode } from 'react';
-import { MessagesSquare, LogIn, Sun, Smartphone, ChevronDown, Users2, Send, X, Loader2 } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Settings, Wallet, Send, LineChart, X, ChevronDown } from 'lucide-react';
+import { Contract, RpcProvider } from 'starknet';
 
-// Types
-interface ApiResponse {
-  output?: Array<{
-    text: string;
-    type: string;
-    index: number;
-  }>;
-}
-
+// Types from original codebase
 interface ChatMessage {
   type: 'user' | 'agent' | 'error';
   content: string;
   timestamp: string;
+  metadata?: {
+    agentType?: string;
+    subType?: string;
+  };
 }
 
 interface QuickCommand {
@@ -1227,86 +1397,113 @@ interface QuickCommand {
   description?: string;
 }
 
-const StarknetChat = () => {
-  // Type guard for QuickCommand
-  const hasRequiresAddress = (cmd: QuickCommand): cmd is QuickCommand & { requiresAddress: boolean } => {
-    return 'requiresAddress' in cmd && cmd.requiresAddress === true;
-  };
+interface SystemEvent {
+  message: string;
+  timestamp: string;
+  type: 'info' | 'success' | 'error';
+}
 
-  // Format message content with better styling
-  const formatMessageContent = (content: string): ReactNode => {
-    try {
-      // Try to parse the content if it's JSON
-      const parsed = JSON.parse(content);
+
+
+// Format message content with better styling
+const formatMessageContent = (content: string): React.ReactNode => {
+  try {
+    // Try to parse the content if it's JSON
+    const parsed = JSON.parse(content);
+    
+    // If it's in our standard API response format
+    if (parsed.input && parsed.output?.[0]?.text) {
+      let text = parsed.output[0].text.trim();
       
-      // If it's in our standard API response format
-      if (parsed.input && parsed.output?.[0]?.text) {
-        let text = parsed.output[0].text.trim();
-        
-        // Check if the text contains key-value pairs we want to highlight
-        if (text.includes("Public Key:") || text.includes("Address:") || text.includes("Transaction Hash:")) {
-          // Split the text into lines
-          const lines = text.split('\n').map((line: string): ReactNode => {
-            // Highlight specific data points
-            if (line.includes("Public Key:") || 
-                line.includes("Address:") || 
-                line.includes("Private Key:") ||
-                line.includes("Transaction Hash:") ||
-                line.includes("Precalculated Address:")) {
-              const [label, value] = line.split(':').map((s: string): string => s.trim());
-              if (value) {
-                return (
-                  <div key={label} className="my-2 p-3 bg-gray-800/50 rounded-lg">
-                    <div className="text-gray-400 text-sm mb-1">{label}:</div>
-                    <div className="font-mono text-sm break-all text-blue-400">{value}</div>
-                  </div>
-                );
-              }
-            }
-            
-            // Format numbered lists
-            if (/^\d+\./.test(line)) {
-              return <div key={line} className="ml-4 my-1">{line}</div>;
-            }
-            
-            // Format bullet points
-            if (line.startsWith('-')) {
+      // Check if the text contains key-value pairs we want to highlight
+      if (text.includes("Public Key:") || text.includes("Address:") || text.includes("Transaction Hash:")) {
+        // Split the text into lines
+        const lines = text.split('\n').map((line: string): React.ReactNode => {
+          // Highlight specific data points
+          if (line.includes("Public Key:") || 
+              line.includes("Address:") || 
+              line.includes("Private Key:") ||
+              line.includes("Transaction Hash:") ||
+              line.includes("Precalculated Address:")) {
+            const [label, value] = line.split(':').map((s: string) => s.trim());
+            if (value) {
               return (
-                <div key={line} className="ml-4 my-1 flex items-center">
-                  <div className="w-1 h-1 rounded-full bg-blue-400 mr-2"></div>
-                  {line.slice(1).trim()}
+                <div key={label} className="my-2 p-3 bg-gray-800/50 rounded-lg">
+                  <div className="text-gray-400 text-sm mb-1">{label}:</div>
+                  <div className="font-mono text-sm break-all text-blue-400">{value}</div>
                 </div>
               );
             }
-            
-            // Section headers
-            if (line.toLowerCase().includes('next steps:')) {
-              return (
-                <div key={line} className="text-blue-400 font-semibold mt-4 mb-2">
-                  {line}
-                </div>
-              );
-            }
-            
-            // Default line formatting
-            return <div key={line} className="my-1">{line}</div>;
-          });
+          }
           
-          return <div className="space-y-1">{lines}</div>;
-        }
+          // Format numbered lists
+          if (/^\d+\./.test(line)) {
+            return <div key={line} className="ml-4 my-1">{line}</div>;
+          }
+          
+          // Format bullet points
+          if (line.startsWith('-')) {
+            return (
+              <div key={line} className="ml-4 my-1 flex items-center">
+                <div className="w-1 h-1 rounded-full bg-blue-400 mr-2"></div>
+                {line.slice(1).trim()}
+              </div>
+            );
+          }
+          
+          // Section headers
+          if (line.toLowerCase().includes('next steps:')) {
+            return (
+              <div key={line} className="text-blue-400 font-semibold mt-4 mb-2">
+                {line}
+              </div>
+            );
+          }
+          
+          // Default line formatting
+          return <div key={line} className="my-1">{line}</div>;
+        });
         
-        // Return the raw text if no special formatting is needed
-        return text;
+        return <div className="space-y-1">{lines}</div>;
       }
       
-      // Return the original content if it doesn't match our format
-      return content;
-    } catch {
-      // If parsing fails, return the original content
-      return content;
+      // Return the raw text if no special formatting is needed
+      return text;
     }
-  };
+    
+    // If it's a structured response from our API
+    if (parsed.status === "success") {
+      return (
+        <div>
+          {parsed.transaction_hash && (
+            <div className="my-2 p-3 bg-gray-800/50 rounded-lg">
+              <div className="text-gray-400 text-sm mb-1">Transaction Hash:</div>
+              <a 
+                href={`https://starkscan.co/tx/${parsed.transaction_hash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-sm text-blue-400 hover:underline break-all"
+              >
+                {parsed.transaction_hash}
+              </a>
+            </div>
+          )}
+          {parsed.message && (
+            <div className="my-2">{parsed.message}</div>
+          )}
+        </div>
+      );
+    }
+    
+    // Return the original content if it doesn't match our format
+    return content;
+  } catch {
+    // If parsing fails, return the original content
+    return content;
+  }
+};
 
+const StarknetChat = () => {
   // State management
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
@@ -1314,13 +1511,13 @@ const StarknetChat = () => {
   const [showAddressPrompt, setShowAddressPrompt] = useState(false);
   const [addressInput, setAddressInput] = useState('');
   const [selectedCommand, setSelectedCommand] = useState<QuickCommand | null>(null);
-  const [openCategory, setOpenCategory] = useState<string | null>('Account');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>('Account');
   const [publicAddress, setPublicAddress] = useState<string>('');
+  const [systemEvents, setSystemEvents] = useState<SystemEvent[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
 
-  // Command categories
+  // Command categories from original codebase
   const commandCategories = {
     "Account": [
       { label: "Create Argent Account", command: "Create a new Argent account" },
@@ -1362,20 +1559,12 @@ const StarknetChat = () => {
         requiresAddress: true,
         addressPrompt: "Enter the recipient's address for simulation:"
       },
-      { label: "Estimate Deploy Fee", command: "Estimate account deployment fee" },
     ],
     "Network": [
       { label: "Latest Block", command: "Get the latest block number" },
       { label: "Chain ID", command: "Get the chain ID" },
       { label: "Syncing Status", command: "Check network syncing status" },
       { label: "Spec Version", command: "Get the spec version" },
-    ],
-    "Block Info": [
-      { label: "Latest Block Info", command: "Get the latest block with transactions" },
-      { label: "Block State Update", command: "Get the latest block state update" },
-      { label: "Block Receipts", command: "Get the latest block with receipts" },
-      { label: "Block Traces", command: "Get the latest block transactions traces" },
-      { label: "Transaction Count", command: "Get the latest block transaction count" },
     ],
     "Contract Info": [
       { 
@@ -1405,14 +1594,139 @@ const StarknetChat = () => {
     ]
   };
 
-  // Auto-scroll to bottom of messages
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  // Agents with their specific commands
+  const agents = [
+    {
+      title: 'Account Guardian',
+      type: 'AI Assistant',
+      description: 'Specializes in account creation and management',
+      image: '/assets/char1.png',
+      commands: [
+        { label: "Create Argent Account", command: "Create a new Argent account" },
+        { label: "Create OZ Account", command: "Create a new OpenZeppelin account" },
+        { label: "Deploy Argent Account", command: "Deploy my Argent account" },
+        { label: "Deploy OZ Account", command: "Deploy my OpenZeppelin account" },
+        { label: "Get My Address", command: "What is my wallet address?" }
+      ]
+    },
+    {
+      title: 'Token Sentinel',
+      type: 'AI Assistant',
+      description: 'Monitors and manages token balances and transfers',
+      image: '/assets/char2.png',
+      commands: [
+        { label: "Check ETH Balance", command: "What is my ETH balance?" },
+        { label: "Check USDC Balance", command: "What is my USDC balance?" },
+        { label: "Check USDT Balance", command: "What is my USDT balance?" },
+        { label: "Check STRK Balance", command: "What is my STRK balance?" },
+        { 
+          label: "Check Other Wallet", 
+          command: "Get ETH balance of {address}",
+          requiresAddress: true,
+          addressPrompt: "Enter the wallet address to check:"
+        }
+      ]
+    },
+    {
+      title: 'Swap Sage',
+      type: 'AI Assistant',
+      description: 'Expert in token swaps and DeFi operations',
+      image: '/assets/char3.png',
+      commands: [
+        { label: "Swap ETH to USDC", command: "Swap 0.1 ETH for USDC" },
+        { label: "Swap USDC to ETH", command: "Swap 100 USDC for ETH" },
+        { label: "Check Swap Rate", command: "Get current ETH/USDC swap rate" },
+        { label: "Estimate Swap Fees", command: "Estimate fees for swapping 0.1 ETH to USDC" }
+      ]
+    },
+    {
+      title: 'Transfer Oracle',
+      type: 'AI Assistant',
+      description: 'Handles secure token transfers and simulations',
+      image: '/assets/char4.png',
+      commands: [
+        { 
+          label: "Transfer ETH", 
+          command: "Transfer 0.1 ETH to {address}",
+          requiresAddress: true,
+          addressPrompt: "Enter the recipient's address:"
+        },
+        { 
+          label: "Transfer USDC", 
+          command: "Transfer 100 USDC to {address}",
+          requiresAddress: true,
+          addressPrompt: "Enter the recipient's address:"
+        },
+        { 
+          label: "Simulate Transfer", 
+          command: "Simulate transferring 0.1 ETH to {address}",
+          requiresAddress: true,
+          addressPrompt: "Enter the recipient's address for simulation:"
+        }
+      ]
+    },
+    {
+      title: 'Network Seer',
+      type: 'AI Assistant',
+      description: 'Provides insights into network status and metrics',
+      image: '/assets/char5.png',
+      commands: [
+        { label: "Latest Block", command: "Get the latest block number" },
+        { label: "Chain ID", command: "Get the chain ID" },
+        { label: "Syncing Status", command: "Check network syncing status" },
+        { label: "Spec Version", command: "Get the spec version" },
+        { label: "Network Stats", command: "Get current network statistics" }
+      ]
+    },
+    {
+      title: 'Contract Sage',
+      type: 'AI Assistant',
+      description: 'Analyzes and interacts with smart contracts',
+      image: '/assets/char6.png',
+      commands: [
+        { 
+          label: "Get Storage", 
+          command: "Get storage at address {address}",
+          requiresAddress: true,
+          addressPrompt: "Enter the contract address:"
+        },
+        { 
+          label: "Get Class", 
+          command: "Get class at address {address}",
+          requiresAddress: true,
+          addressPrompt: "Enter the contract address:"
+        },
+        { 
+          label: "Get Class Hash", 
+          command: "Get class hash at address {address}",
+          requiresAddress: true,
+          addressPrompt: "Enter the contract address:"
+        },
+        { 
+          label: "Get Nonce", 
+          command: "Get nonce for address {address}",
+          requiresAddress: true,
+          addressPrompt: "Enter the address:"
+        }
+      ]
+    }
+  ];
 
+  // Auto-scroll effect
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    setPublicAddress(process.env.NEXT_PUBLIC_PUBLIC_ADDRESS || '');
+
   }, [messages]);
+
+  // Initialize system
+  useEffect(() => {
+    addSystemEvent('Initializing Starknet agents...', 'info');
+    setTimeout(() => {
+      addSystemEvent('Agents initialized successfully', 'success');
+      addSystemEvent('Ready for Starknet operations', 'info');
+    }, 1000);
+  }, []);
 
   // Handle command selection
   const handleCommand = (command: QuickCommand) => {
@@ -1435,27 +1749,26 @@ const StarknetChat = () => {
     }
   };
 
-  // Main submit handler
-  const handleSubmit = async (e?: FormEvent<HTMLFormElement>, commandOverride?: string) => {
+  // Handle message submission
+  const handleSubmit = async (e?: React.FormEvent, commandOverride?: string) => {
     if (e) e.preventDefault();
     const messageToSend = commandOverride || inputMessage;
-    if (!messageToSend.trim()) return;
+    if (!messageToSend.trim() || isLoading) return;
 
     const userMessage: ChatMessage = {
       type: 'user',
       content: messageToSend,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toLocaleTimeString(),
     };
 
     setMessages(prev => [...prev, userMessage]);
     setInputMessage('');
     setIsLoading(true);
+    addSystemEvent('Processing request...', 'info');
 
     try {
       const apiKey = process.env.NEXT_PUBLIC_API_KEY;
-      if (!apiKey) {
-        throw new Error('API key is not configured');
-      }
+      if (!apiKey) throw new Error('API key not configured');
 
       const response = await fetch('/api/agent/request', {
         method: 'POST',
@@ -1465,207 +1778,261 @@ const StarknetChat = () => {
         },
         body: JSON.stringify({ request: messageToSend })
       });
-      
-      const data: ApiResponse = await response.json();
+
+      const data = await response.json();
       
       const agentMessage: ChatMessage = {
         type: 'agent',
-        content: data.output?.[0]?.text || 'Sorry, I encountered an error processing your request.',
-        timestamp: new Date().toISOString(),
+        content: data.output?.[0]?.text || 'Error processing request',
+        timestamp: new Date().toLocaleTimeString(),
+        metadata: {
+          agentType: 'Starknet Agent',
+          subType: 'response'
+        }
       };
 
       setMessages(prev => [...prev, agentMessage]);
+      addSystemEvent('Request processed successfully', 'success');
     } catch (error) {
       const errorMessage: ChatMessage = {
         type: 'error',
-        content: error instanceof Error ? error.message : 'An error occurred',
-        timestamp: new Date().toISOString(),
+        content: error instanceof Error ? error.message : 'Unknown error occurred',
+        timestamp: new Date().toLocaleTimeString(),
       };
       setMessages(prev => [...prev, errorMessage]);
+      addSystemEvent('Error processing request', 'error');
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Helper function to add system events
+  const addSystemEvent = (message: string, type: 'info' | 'success' | 'error') => {
+    setSystemEvents(prev => [...prev, {
+      message,
+      timestamp: new Date().toLocaleTimeString(),
+      type
+    }]);
+  };
+
   return (
-    <div className="min-h-screen bg-black text-gray-100 flex">
-{/* Sidebar */}
-<div className="w-64 bg-[#0A0A0A] border-r border-gray-800/50 flex flex-col">
-  {/* Logo area */}
-  <div className="p-4 flex items-center justify-between border-b border-gray-800">
-    <div className="flex items-center space-x-2">
-      <span className="text-2xl">⚡</span>
-      <span className="font-semibold">StarkAgent</span>
-    </div>
-    <div className="flex items-center space-x-2">
-      <Sun className="w-5 h-5 text-gray-400 cursor-pointer hover:text-gray-200" />
-      <Smartphone className="w-5 h-5 text-gray-400 cursor-pointer hover:text-gray-200" />
-    </div>
-  </div>
-
-  {/* Command Categories */}
-  <div className="flex-1 overflow-y-auto p-4 space-y-4">
-    {Object.entries(commandCategories).map(([category, commands]) => (
-      <div key={category} className="space-y-2">
-        <button
-          onClick={() => setSelectedCategory(selectedCategory === category ? null : category)}
-          className="w-full flex items-center justify-between text-gray-400 hover:text-white"
-        >
-          <span className="text-sm font-medium">{category}</span>
-          <ChevronDown className={`w-4 h-4 transform transition-transform ${
-            selectedCategory === category ? 'rotate-180' : ''
-          }`} />
-        </button>
-        
-        {selectedCategory === category && (
-          <div className="space-y-1 ml-2">
-            {commands.map((cmd, idx) => (
+    <div className="flex h-screen bg-[#0B1120] text-gray-100">
+      {/* Left Sidebar - Available Agents and Commands */}
+      <div className="w-80 bg-[#0D1424] border-r border-gray-800">
+        <div className="p-4 border-b border-gray-800">
+          <h2 className="text-xl font-semibold">Available Agents</h2>
+        </div>
+        <div className="overflow-y-auto h-[calc(100vh-64px)]">
+          {agents.map((agent, index) => (
+            <div key={index} className="border-b border-gray-800/50">
               <button
-                key={idx}
-                onClick={() => handleCommand(cmd)}
-                className="w-full text-left text-sm text-gray-500 hover:text-white py-1 px-2 rounded transition-colors hover:bg-gray-800/50"
+                onClick={() => setSelectedCategory(selectedCategory === agent.title ? null : agent.title)}
+                className="w-full p-4 hover:bg-gray-800/50"
               >
-                {cmd.label}
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 relative">
+                    <img
+                      src={agent.image}
+                      alt={agent.title}
+                      className="rounded-full"
+                      width={48}
+                      height={48}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-medium">{agent.title}</h3>
+                      <ChevronDown
+                        className={`w-4 h-4 transform transition-transform ${
+                          selectedCategory === agent.title ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </div>
+                    <p className="text-sm text-gray-400">{agent.type}</p>
+                  </div>
+                </div>
+                <p className="mt-2 text-sm text-gray-400 text-left">{agent.description}</p>
               </button>
-            ))}
+              
+              {selectedCategory === agent.title && (
+                <div className="pb-2">
+                  <div className="px-4 py-2 border-y border-gray-800/50 bg-gray-900/50">
+                    <h4 className="text-sm font-medium text-gray-400">Commands</h4>
+                  </div>
+                  {agent.commands.map((cmd, idx) => (
+                    <button
+                      key={idx}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCommand(cmd);
+                      }}
+                      className="w-full px-6 py-2 text-left text-sm text-gray-400 hover:text-white hover:bg-gray-800/50"
+                    >
+                      {cmd.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col">
+        {/* Top Navigation */}
+        <div className="h-16 border-b border-gray-800 flex items-center justify-between px-6">
+          <div className="flex items-center gap-2 bg-[#1E293B] text-gray-100 px-4 py-2 rounded-full">
+            <div className="w-2 h-2 bg-green-500 rounded-full" />
+            <span className="text-sm font-mono">
+              {publicAddress 
+                ? `${publicAddress.slice(0, 30)}${publicAddress.slice(-40)}`
+                : 'Not Connected'}
+            </span>
           </div>
-        )}
-      </div>
-    ))}
-  </div>
+        </div>
 
-  {/* Bottom section - Public Address */}
-  <div className="p-4 border-t border-gray-800">
-    <div className="bg-gray-900/50 rounded-lg p-3">
-      <div className="text-xs text-gray-500 mb-1">Connected Address:</div>
-      <div className="font-mono text-xs text-gray-300 break-all">
-        {publicAddress || 'Loading...'}
-      </div>
-    </div>
-  </div>
-</div>
+        {/* Chat Messages */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {messages.map((message, index) => (
+            <div key={index} className="flex items-start gap-4">
+              {message.type === 'agent' && (
+                <div className="w-10 h-10 rounded-full bg-blue-500 flex-shrink-0" />
+              )}
+              <div className={`flex-1 ${message.type === 'user' ? 'ml-auto' : ''}`}>
+                {message.metadata && (
+                  <div className="flex items-center gap-2 text-sm text-gray-400">
+                    <span>{message.metadata.agentType}</span>
+                    {message.metadata.subType && (
+                      <>
+                        <span>•</span>
+                        <span>{message.metadata.subType}</span>
+                      </>
+                    )}
+                  </div>
+                )}
+                <div className={`mt-1 p-4 rounded-lg ${
+                  message.type === 'user' 
+                    ? 'bg-blue-500 ml-auto' 
+                    : message.type === 'error'
+                    ? 'bg-red-500/20 border border-red-500/40'
+                    : 'bg-gray-800/50'
+                }`}>
+                  {formatMessageContent(message.content)}
+                </div>
+                <div className="mt-1 text-sm text-gray-500">{message.timestamp}</div>
+              </div>
+              {message.type === 'user' && (
+                <div className="w-10 h-10 rounded-full bg-blue-600 flex-shrink-0" />
+              )}
+            </div>
+          ))}
+          <div ref={messagesEndRef} />
+        </div>
 
-{/* Main chat area */}
-<div className="flex-1 flex flex-col">
-  {/* Messages area */}
-  <div className="flex-1 overflow-y-auto p-4 space-y-4">
-    {messages.length === 0 ? (
-      <div className="h-full flex flex-col items-center justify-center text-center p-8">
-        <div className="text-4xl mb-4">⚡</div>
-        <h1 className="text-3xl font-bold mb-2">
-          Welcome to <span className="text-blue-500">StarkAgent</span>
-        </h1>
-        <p className="text-gray-400 mb-8 max-w-md">
-          Your AI assistant for Starknet operations. Ask me anything about accounts, 
-          transactions, or network status.
-        </p>
+        {/* Input Area */}
+        <div className="border-t border-gray-800 p-4">
+          <form onSubmit={handleSubmit} className="flex gap-4">
+            <input
+              type="text"
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
+              placeholder="Type your message..."
+              className="flex-1 bg-gray-800/50 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={isLoading}
+            />
+            <button
+              type="submit"
+              disabled={isLoading || !inputMessage.trim()}
+              className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {isLoading ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Send className="w-5 h-5" />
+              )}
+              Send
+            </button>
+          </form>
+        </div>
       </div>
-    ) : (
-      messages.map((message, index) => (
-        <div
-          key={index}
-          className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-        >
-          <div
-            className={`max-w-[80%] p-4 rounded-lg ${
-              message.type === 'user'
-                ? 'bg-blue-600 text-white'
-                : message.type === 'error'
-                ? 'bg-red-500/20 text-red-200 border border-red-500/40'
-                : 'bg-gray-800 text-gray-100'
-            }`}
-          >
-            {formatMessageContent(message.content)}
-            <div className="text-xs opacity-60 mt-2">
-              {new Date(message.timestamp).toLocaleTimeString()}
+
+      {/* Right Sidebar - System Events */}
+      <div className="fixed right-0 top-0 h-screen w-80 bg-[#0D1424] border-l border-gray-800 overflow-y-auto">
+        <div className="p-4 border-b border-gray-800">
+          <h2 className="text-xl font-semibold">System Events</h2>
+        </div>
+        <div className="p-4 space-y-4">
+          {systemEvents.map((event, index) => (
+            <div
+              key={index}
+              className={`p-3 rounded-lg text-sm ${
+                event.type === 'success'
+                  ? 'bg-green-500/10 text-green-400'
+                  : event.type === 'error'
+                  ? 'bg-red-500/10 text-red-400'
+                  : 'bg-blue-500/10 text-blue-400'
+              }`}
+            >
+              <div className="flex justify-between items-center">
+                <span>{event.message}</span>
+                <span className="text-xs opacity-60">{event.timestamp}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Address Input Modal */}
+      {showAddressPrompt && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-[#141414] rounded-lg p-6 max-w-md w-full border border-gray-800">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-100">
+                {selectedCommand?.addressPrompt}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowAddressPrompt(false);
+                  setAddressInput('');
+                  setSelectedCommand(null);
+                }}
+                className="text-gray-400 hover:text-gray-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <input
+              type="text"
+              value={addressInput}
+              onChange={(e) => setAddressInput(e.target.value)}
+              placeholder="0x..."
+              className="w-full bg-gray-900 text-white rounded-lg px-4 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => {
+                  setShowAddressPrompt(false);
+                  setAddressInput('');
+                  setSelectedCommand(null);
+                }}
+                className="px-4 py-2 text-gray-400 hover:text-gray-200 hover:bg-gray-800 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddressSubmit}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
+                disabled={!addressInput.trim()}
+              >
+                Confirm
+              </button>
             </div>
           </div>
         </div>
-      ))
-    )}
-    {isLoading && (
-      <div className="flex justify-start">
-        <div className="bg-gray-800 p-4 rounded-lg flex items-center space-x-2">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          <span>Processing...</span>
-        </div>
-      </div>
-    )}
-    <div ref={messagesEndRef} />
-  </div>
-
-  {/* Input area */}
-  <div className="p-4 border-t border-gray-800 bg-[#141414]">
-    <form onSubmit={handleSubmit} className="flex space-x-2">
-      <input
-        type="text"
-        value={inputMessage}
-        onChange={(e) => setInputMessage(e.target.value)}
-        placeholder="Type your message..."
-        className="flex-1 bg-gray-900 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        disabled={isLoading}
-      />
-      <button
-        type="submit"
-        disabled={isLoading || !inputMessage.trim()}
-        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <Send className="w-5 h-5" />
-      </button>
-    </form>
-  </div>
-</div>
-
-{/* Address Modal */}
-{showAddressPrompt && (
-  <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-    <div className="bg-[#141414] rounded-lg p-6 max-w-md w-full border border-gray-800">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold text-gray-100">
-          {selectedCommand?.addressPrompt}
-        </h3>
-        <button
-          onClick={() => {
-            setShowAddressPrompt(false);
-            setAddressInput('');
-            setSelectedCommand(null);
-          }}
-          className="text-gray-400 hover:text-gray-200"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
-      <input
-        type="text"
-        value={addressInput}
-        onChange={(e) => setAddressInput(e.target.value)}
-        placeholder="0x..."
-        className="w-full bg-gray-900 text-white rounded-lg px-4 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
-      />
-      <div className="flex justify-end space-x-2">
-        <button
-          onClick={() => {
-            setShowAddressPrompt(false);
-            setAddressInput('');
-            setSelectedCommand(null);
-          }}
-          className="px-4 py-2 text-gray-400 hover:text-gray-200 hover:bg-gray-800 rounded-lg"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={handleAddressSubmit}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          disabled={!addressInput.trim()}
-        >
-          Confirm
-        </button>
-      </div>
+      )}
     </div>
-  </div>
-)}
-</div>
-);
+  );
 };
 
 export default StarknetChat;
